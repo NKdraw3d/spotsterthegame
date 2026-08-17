@@ -1,0 +1,753 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hitster</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    min-height: 100%;
+    background: #121212;
+    color: white;
+    font-family: -apple-system, Arial, sans-serif;
+  }
+  #app {
+    max-width: 600px;
+    margin: 0 auto;
+    padding: 16px;
+    padding-bottom: 60px;
+  }
+  @media (min-width: 700px) {
+    body { padding: 24px 0; }
+  }
+  h1 {
+    text-align: center;
+    font-size: clamp(28px, 5vw, 40px);
+    margin: 10px 0 20px;
+    color: #1DB954;
+  }
+  h2 {
+    font-size: clamp(20px, 3.2vw, 26px);
+    margin: 20px 0 10px;
+  }
+  h3 { font-size: clamp(16px, 2.6vw, 20px); margin: 14px 0 8px; color: #1DB954; }
+  .screen { display: none; }
+  .screen.active { display: block; }
+  .hint { font-size: clamp(13px, 2vw, 15px); color: #999; margin: 4px 0 10px; line-height: 1.4; }
+  a { color: #1DB954; }
+
+  /* --- Instellingen / credentials --- */
+  #credsBox {
+    background: #1e1e1e;
+    border-radius: 12px;
+    padding: 14px;
+    margin-bottom: 18px;
+  }
+  #credsBox input {
+    width: 100%;
+    padding: 10px;
+    margin-bottom: 8px;
+    border-radius: 8px;
+    border: none;
+    font-size: clamp(14px, 2.2vw, 16px);
+    background: #2a2a2a;
+    color: white;
+  }
+  #credsStatus { font-size: clamp(13px, 2vw, 15px); margin-top: 4px; }
+  #credsStatus.ok { color: #1DB954; }
+  #credsStatus.bad { color: #e74c3c; }
+
+  /* --- Zoeken / importeren --- */
+  #searchBox, #importBox {
+    background: #1e1e1e;
+    border-radius: 12px;
+    padding: 14px;
+    margin-bottom: 14px;
+  }
+  #searchBox input, #importBox input {
+    width: 100%;
+    padding: 12px;
+    margin-bottom: 8px;
+    border-radius: 8px;
+    border: none;
+    font-size: clamp(15px, 2.4vw, 17px);
+    background: #2a2a2a;
+    color: white;
+  }
+  .action-btn {
+    width: 100%;
+    padding: 12px;
+    font-size: clamp(16px, 2.6vw, 18px);
+    font-weight: bold;
+    color: white;
+    background-color: #1DB954;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+  }
+  .action-btn:disabled { background-color: #555; }
+
+  .search-result {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: #2a2a2a;
+    border-radius: 10px;
+    padding: 8px;
+    margin-top: 8px;
+  }
+  .search-result img { width: 56px; height: 56px; border-radius: 6px; flex-shrink: 0; }
+  .search-result .info { flex: 1; font-size: clamp(13px, 2vw, 15px); line-height: 1.3; }
+  .search-result button {
+    background: #1DB954;
+    border: none;
+    color: white;
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: clamp(18px, 2.6vw, 22px);
+    cursor: pointer;
+  }
+  .search-result button:disabled { background: #555; }
+
+  #importStatus { font-size: clamp(13px, 2vw, 15px); margin-top: 8px; color: #ccc; }
+
+  /* --- Setup scherm: playlist --- */
+  .song-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #1e1e1e;
+    border-radius: 10px;
+    padding: 10px 14px;
+    margin-bottom: 8px;
+  }
+  .song-info { font-size: clamp(14px, 2.2vw, 16px); }
+  .song-info b { font-size: clamp(15px, 2.3vw, 17px); }
+  .delete-btn {
+    background: #e74c3c;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: clamp(14px, 2.2vw, 16px);
+    cursor: pointer;
+  }
+
+  details#manualDetails { margin-top: 14px; }
+  details#manualDetails summary {
+    cursor: pointer;
+    font-size: clamp(14px, 2.2vw, 16px);
+    color: #999;
+    padding: 6px 0;
+  }
+  form#addForm {
+    background: #1e1e1e;
+    border-radius: 12px;
+    padding: 14px;
+    margin-top: 8px;
+  }
+  form#addForm input {
+    width: 100%;
+    padding: 12px;
+    margin-bottom: 10px;
+    border-radius: 8px;
+    border: none;
+    font-size: clamp(15px, 2.4vw, 17px);
+    background: #2a2a2a;
+    color: white;
+  }
+  form#addForm input::placeholder { color: #999; }
+  #addBtn, #startGameBtn, #nextCardBtn, #backBtn, #restartBtn, #placeConfirmBtn {
+    width: 100%;
+    padding: 14px;
+    font-size: clamp(16px, 2.6vw, 18px);
+    font-weight: bold;
+    color: white;
+    background-color: #1DB954;
+    border: none;
+    border-radius: 12px;
+    cursor: pointer;
+    margin-top: 8px;
+  }
+  #startGameBtn:disabled {
+    background-color: #555;
+  }
+  #backBtn { background-color: #555; }
+  .error-msg { color: #e74c3c; font-size: clamp(13px, 2vw, 15px); margin-top: -4px; margin-bottom: 8px; min-height: 16px; }
+
+  /* --- Spel scherm --- */
+  #scoreDisplay {
+    text-align: center;
+    font-size: clamp(15px, 2.4vw, 18px);
+    margin-bottom: 10px;
+    color: #ccc;
+  }
+
+  #mysteryWrap {
+    background: #1e1e1e;
+    border-radius: 16px;
+    padding: 14px;
+    margin-bottom: 16px;
+    position: relative;
+  }
+  #mysteryLabel {
+    text-align: center;
+    font-size: clamp(14px, 2.2vw, 16px);
+    color: #1DB954;
+    margin-bottom: 4px;
+    font-weight: bold;
+  }
+  #mysteryHint {
+    text-align: center;
+    font-size: clamp(12px, 1.8vw, 14px);
+    color: #999;
+    margin-bottom: 8px;
+  }
+  #spotifyFrame {
+    width: 100%;
+    height: min(352px, 48vh);
+    border-radius: 12px;
+    border: none;
+    transition: filter 0.5s ease;
+    display: block;
+  }
+  .blurred { filter: blur(22px); }
+
+  #revealBox {
+    text-align: center;
+    margin-top: 10px;
+    font-size: clamp(15px, 2.4vw, 18px);
+    min-height: 24px;
+  }
+  #revealBox.correct { color: #1DB954; }
+  #revealBox.wrong { color: #e74c3c; }
+
+  #timelineWrap {
+    overflow-x: auto;
+    white-space: nowrap;
+    padding: 10px 0;
+    margin-bottom: 10px;
+  }
+  .slot {
+    display: inline-block;
+    vertical-align: middle;
+    width: 30px;
+    height: 90px;
+    margin: 0 2px;
+  }
+  .slot-btn {
+    width: 100%;
+    height: 100%;
+    background: #2a2a2a;
+    border: 2px dashed #1DB954;
+    border-radius: 8px;
+    color: #1DB954;
+    font-size: 22px;
+    cursor: pointer;
+  }
+  .slot-btn.selected {
+    background: #1DB954;
+    color: white;
+  }
+  .timeline-card {
+    display: inline-block;
+    vertical-align: middle;
+    width: 100px;
+    height: 90px;
+    background: #2a2a2a;
+    border-radius: 10px;
+    padding: 8px;
+    margin: 0 2px;
+    white-space: normal;
+    font-size: clamp(11px, 1.6vw, 13px);
+    line-height: 1.3;
+  }
+  .timeline-card .year { color: #1DB954; font-weight: bold; font-size: clamp(15px, 2.2vw, 18px); }
+
+  #finalScreen { text-align: center; }
+  #finalScore { font-size: clamp(36px, 6vw, 56px); color: #1DB954; margin: 20px 0; }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <h1>🎵 Hitster</h1>
+
+  <!-- SETUP SCHERM -->
+  <div id="setupScreen" class="screen active">
+
+    <div id="credsBox">
+      <h3>Spotify-koppeling</h3>
+      <div class="hint">
+        Nodig om te zoeken en playlists te importeren (gratis, eenmalig). Maak een app op
+        <a href="https://developer.spotify.com/dashboard" target="_blank">developer.spotify.com/dashboard</a>,
+        kopieer je Client ID en Client Secret hieronder. Blijft alleen lokaal in je browser opgeslagen.
+      </div>
+      <input type="text" id="clientIdInput" placeholder="Client ID">
+      <input type="text" id="clientSecretInput" placeholder="Client Secret">
+      <button class="action-btn" id="saveCredsBtn">Opslaan</button>
+      <div id="credsStatus"></div>
+    </div>
+
+    <div id="searchBox">
+      <h3>Zoek een nummer</h3>
+      <input type="text" id="searchInput" placeholder="Titel of artiest...">
+      <button class="action-btn" id="searchBtn">Zoeken</button>
+      <div id="searchResults"></div>
+    </div>
+
+    <div id="importBox">
+      <h3>Importeer een hele playlist</h3>
+      <input type="text" id="playlistInput" placeholder="Spotify playlist link">
+      <button class="action-btn" id="importBtn">Importeer playlist</button>
+      <div id="importStatus"></div>
+    </div>
+
+    <h2>Jouw playlist voor het spel</h2>
+    <div id="songList"></div>
+
+    <details id="manualDetails">
+      <summary>Handmatig nummer toevoegen (zonder Spotify-koppeling)</summary>
+      <form id="addForm">
+        <input type="text" id="titleInput" placeholder="Titel" required>
+        <input type="text" id="artistInput" placeholder="Artiest" required>
+        <input type="number" id="yearInput" placeholder="Jaar (bv. 1998)" required>
+        <input type="text" id="spotifyInput" placeholder="Spotify link (open.spotify.com/track/...)" required>
+        <div class="error-msg" id="formError"></div>
+        <button type="submit" id="addBtn">+ Nummer toevoegen</button>
+      </form>
+    </details>
+
+    <button id="startGameBtn" disabled>Start spel (min. 2 nummers)</button>
+  </div>
+
+  <!-- SPEL SCHERM -->
+  <div id="gameScreen" class="screen">
+    <div id="scoreDisplay">Score: 0 / 0</div>
+
+    <div id="mysteryWrap">
+      <div id="mysteryLabel">🎧 Mysterieuze plaat</div>
+      <div id="mysteryHint">Tik op de groene afspeelknop hierboven (verstopt achter de waas) om te luisteren</div>
+      <iframe id="spotifyFrame" class="blurred" src="" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"></iframe>
+      <div id="revealBox"></div>
+    </div>
+
+    <h2>Tijdlijn — kies waar dit nummer past</h2>
+    <div id="timelineWrap"></div>
+
+    <button id="placeConfirmBtn" style="display:none;">Bevestig plek</button>
+    <button id="nextCardBtn" style="display:none;">Volgende kaart ▶</button>
+    <button id="backBtn">Terug naar playlist</button>
+  </div>
+
+  <!-- EINDSCHERM -->
+  <div id="finalScreen" class="screen">
+    <h2>Spel afgelopen!</h2>
+    <div id="finalScore"></div>
+    <button id="restartBtn">Opnieuw spelen</button>
+    <button id="backBtn2">Terug naar playlist</button>
+  </div>
+</div>
+
+<script>
+  // ---------- Opslag ----------
+  const STORAGE_KEY = 'hitster_playlist_v1';
+  const CREDS_KEY = 'hitster_spotify_creds_v1';
+  let playlist = [];
+  let creds = { clientId: '', clientSecret: '' };
+  let tokenCache = { token: null, expiresAt: 0 };
+
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) playlist = JSON.parse(saved);
+  } catch (e) { playlist = []; }
+
+  try {
+    const savedCreds = localStorage.getItem(CREDS_KEY);
+    if (savedCreds) creds = JSON.parse(savedCreds);
+  } catch (e) {}
+
+  function savePlaylist() {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(playlist)); } catch (e) {}
+  }
+  function saveCreds() {
+    try { localStorage.setItem(CREDS_KEY, JSON.stringify(creds)); } catch (e) {}
+  }
+
+  // ---------- Elementen ----------
+  const clientIdInput = document.getElementById('clientIdInput');
+  const clientSecretInput = document.getElementById('clientSecretInput');
+  const saveCredsBtn = document.getElementById('saveCredsBtn');
+  const credsStatus = document.getElementById('credsStatus');
+
+  const searchInput = document.getElementById('searchInput');
+  const searchBtn = document.getElementById('searchBtn');
+  const searchResults = document.getElementById('searchResults');
+
+  const playlistInput = document.getElementById('playlistInput');
+  const importBtn = document.getElementById('importBtn');
+  const importStatus = document.getElementById('importStatus');
+
+  const songListEl = document.getElementById('songList');
+  const addForm = document.getElementById('addForm');
+  const titleInput = document.getElementById('titleInput');
+  const artistInput = document.getElementById('artistInput');
+  const yearInput = document.getElementById('yearInput');
+  const spotifyInput = document.getElementById('spotifyInput');
+  const formError = document.getElementById('formError');
+  const startGameBtn = document.getElementById('startGameBtn');
+
+  const setupScreen = document.getElementById('setupScreen');
+  const gameScreen = document.getElementById('gameScreen');
+  const finalScreen = document.getElementById('finalScreen');
+
+  const scoreDisplay = document.getElementById('scoreDisplay');
+  const spotifyFrame = document.getElementById('spotifyFrame');
+  const revealBox = document.getElementById('revealBox');
+  const timelineWrap = document.getElementById('timelineWrap');
+  const placeConfirmBtn = document.getElementById('placeConfirmBtn');
+  const nextCardBtn = document.getElementById('nextCardBtn');
+  const backBtn = document.getElementById('backBtn');
+  const backBtn2 = document.getElementById('backBtn2');
+  const restartBtn = document.getElementById('restartBtn');
+  const finalScore = document.getElementById('finalScore');
+
+  function showScreen(el) {
+    [setupScreen, gameScreen, finalScreen].forEach(s => s.classList.remove('active'));
+    el.classList.add('active');
+  }
+
+  // ---------- Credentials ----------
+  clientIdInput.value = creds.clientId || '';
+  clientSecretInput.value = creds.clientSecret || '';
+  if (creds.clientId && creds.clientSecret) {
+    credsStatus.textContent = 'Opgeslagen.';
+    credsStatus.className = 'ok';
+  }
+
+  saveCredsBtn.addEventListener('click', () => {
+    creds.clientId = clientIdInput.value.trim();
+    creds.clientSecret = clientSecretInput.value.trim();
+    saveCreds();
+    tokenCache = { token: null, expiresAt: 0 };
+    if (creds.clientId && creds.clientSecret) {
+      credsStatus.textContent = 'Opgeslagen.';
+      credsStatus.className = 'ok';
+    } else {
+      credsStatus.textContent = 'Vul beide velden in.';
+      credsStatus.className = 'bad';
+    }
+  });
+
+  async function getToken() {
+    if (tokenCache.token && Date.now() < tokenCache.expiresAt) {
+      return tokenCache.token;
+    }
+    if (!creds.clientId || !creds.clientSecret) {
+      throw new Error('Geen Spotify Client ID/Secret ingesteld.');
+    }
+    const basic = btoa(`${creds.clientId}:${creds.clientSecret}`);
+    const res = await fetch('https://accounts.spotify.com/api/token', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Basic ${basic}`,
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: 'grant_type=client_credentials'
+    });
+    if (!res.ok) throw new Error('Inloggen bij Spotify mislukt — controleer je Client ID/Secret.');
+    const data = await res.json();
+    tokenCache.token = data.access_token;
+    tokenCache.expiresAt = Date.now() + (data.expires_in - 60) * 1000;
+    return tokenCache.token;
+  }
+
+  // ---------- Zoeken ----------
+  searchBtn.addEventListener('click', async () => {
+    const q = searchInput.value.trim();
+    searchResults.innerHTML = '';
+    if (!q) return;
+    searchBtn.disabled = true;
+    searchBtn.textContent = 'Zoeken...';
+    try {
+      const token = await getToken();
+      const res = await fetch(`https://api.spotify.com/v1/search?q=${encodeURIComponent(q)}&type=track&limit=8`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error('Zoeken mislukt.');
+      const data = await res.json();
+      renderSearchResults(data.tracks ? data.tracks.items : []);
+    } catch (err) {
+      searchResults.innerHTML = `<div class="error-msg">${err.message}</div>`;
+    }
+    searchBtn.disabled = false;
+    searchBtn.textContent = 'Zoeken';
+  });
+
+  function renderSearchResults(tracks) {
+    searchResults.innerHTML = '';
+    if (tracks.length === 0) {
+      searchResults.innerHTML = '<div class="hint">Niets gevonden.</div>';
+      return;
+    }
+    tracks.forEach(track => {
+      const year = (track.album && track.album.release_date) ? track.album.release_date.slice(0, 4) : '?';
+      const artistNames = track.artists.map(a => a.name).join(', ');
+      const img = (track.album && track.album.images && track.album.images.length)
+        ? track.album.images[track.album.images.length - 1].url : '';
+
+      const row = document.createElement('div');
+      row.className = 'search-result';
+      row.innerHTML = `
+        ${img ? `<img src="${img}">` : ''}
+        <div class="info"><b>${track.name}</b><br>${artistNames} · ${year}</div>
+        <button>+</button>
+      `;
+      row.querySelector('button').addEventListener('click', (e) => {
+        playlist.push({ title: track.name, artist: artistNames, year: parseInt(year, 10) || 0, spotifyId: track.id });
+        savePlaylist();
+        renderSongList();
+        e.target.disabled = true;
+        e.target.textContent = '✓';
+      });
+      searchResults.appendChild(row);
+    });
+  }
+
+  // ---------- Playlist importeren ----------
+  function extractPlaylistId(url) {
+    const match = url.match(/playlist[\/:]([a-zA-Z0-9]{10,30})/);
+    return match ? match[1] : null;
+  }
+
+  importBtn.addEventListener('click', async () => {
+    const url = playlistInput.value.trim();
+    const playlistId = extractPlaylistId(url);
+    if (!playlistId) {
+      importStatus.textContent = 'Geen geldige playlist-link gevonden.';
+      return;
+    }
+    importBtn.disabled = true;
+    importStatus.textContent = 'Bezig met importeren...';
+    try {
+      const token = await getToken();
+      let nextUrl = `https://api.spotify.com/v1/playlists/${playlistId}/tracks?limit=50`;
+      let added = 0;
+      while (nextUrl) {
+        const res = await fetch(nextUrl, { headers: { 'Authorization': `Bearer ${token}` } });
+        if (!res.ok) throw new Error('Importeren mislukt — is de playlist openbaar?');
+        const data = await res.json();
+        (data.items || []).forEach(item => {
+          const track = item.track;
+          if (!track || !track.id) return;
+          const year = (track.album && track.album.release_date) ? parseInt(track.album.release_date.slice(0, 4), 10) : 0;
+          const artistNames = track.artists.map(a => a.name).join(', ');
+          if (!playlist.some(s => s.spotifyId === track.id)) {
+            playlist.push({ title: track.name, artist: artistNames, year: year, spotifyId: track.id });
+            added++;
+          }
+        });
+        nextUrl = data.next;
+        importStatus.textContent = `Bezig... ${added} nummers toegevoegd`;
+      }
+      savePlaylist();
+      renderSongList();
+      importStatus.textContent = `Klaar — ${added} nummers geïmporteerd.`;
+    } catch (err) {
+      importStatus.textContent = err.message;
+    }
+    importBtn.disabled = false;
+  });
+
+  // ---------- Playlist beheer (handmatig) ----------
+  function extractSpotifyId(url) {
+    const match = url.match(/track[\/:]([a-zA-Z0-9]{10,30})/);
+    return match ? match[1] : null;
+  }
+
+  function renderSongList() {
+    songListEl.innerHTML = '';
+    playlist.forEach((song, i) => {
+      const row = document.createElement('div');
+      row.className = 'song-row';
+      row.innerHTML = `
+        <div class="song-info"><b>${song.year}</b> — ${song.title} (${song.artist})</div>
+        <button class="delete-btn" data-index="${i}">✕</button>
+      `;
+      songListEl.appendChild(row);
+    });
+    startGameBtn.disabled = playlist.length < 2;
+    startGameBtn.textContent = playlist.length < 2
+      ? 'Start spel (min. 2 nummers)'
+      : `Start spel (${playlist.length} nummers)`;
+  }
+
+  songListEl.addEventListener('click', (e) => {
+    if (e.target.classList.contains('delete-btn')) {
+      const idx = parseInt(e.target.dataset.index, 10);
+      playlist.splice(idx, 1);
+      savePlaylist();
+      renderSongList();
+    }
+  });
+
+  addForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    formError.textContent = '';
+
+    const title = titleInput.value.trim();
+    const artist = artistInput.value.trim();
+    const year = parseInt(yearInput.value, 10);
+    const spotifyId = extractSpotifyId(spotifyInput.value.trim());
+
+    if (!title || !artist || !year || !spotifyId) {
+      formError.textContent = 'Vul alles correct in — check ook de Spotify link.';
+      return;
+    }
+
+    playlist.push({ title, artist, year, spotifyId });
+    savePlaylist();
+    renderSongList();
+    addForm.reset();
+  });
+
+  // ---------- Spel state ----------
+  let deck = [];
+  let timeline = [];
+  let currentCard = null;
+  let selectedSlot = null;
+  let score = 0;
+  let played = 0;
+
+  startGameBtn.addEventListener('click', () => {
+    deck = shuffle([...playlist]);
+    timeline = [];
+    score = 0;
+    played = 0;
+    showScreen(gameScreen);
+    drawNextCard();
+  });
+
+  function shuffle(arr) {
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+  }
+
+  function drawNextCard() {
+    if (deck.length === 0) {
+      endGame();
+      return;
+    }
+    currentCard = deck.pop();
+    selectedSlot = null;
+    revealBox.textContent = '';
+    revealBox.className = '';
+    spotifyFrame.classList.add('blurred');
+    spotifyFrame.src = `https://open.spotify.com/embed/track/${currentCard.spotifyId}?utm_source=generator`;
+    placeConfirmBtn.style.display = 'none';
+    nextCardBtn.style.display = 'none';
+    updateScore();
+    renderTimeline();
+  }
+
+  function updateScore() {
+    scoreDisplay.textContent = `Score: ${score} / ${played}`;
+  }
+
+  function renderTimeline() {
+    timelineWrap.innerHTML = '';
+    timelineWrap.appendChild(makeSlot(0));
+    timeline.forEach((card, i) => {
+      const cardEl = document.createElement('div');
+      cardEl.className = 'timeline-card';
+      cardEl.innerHTML = `<div class="year">${card.year}</div>${card.title}<br><span style="color:#999">${card.artist}</span>`;
+      timelineWrap.appendChild(cardEl);
+      timelineWrap.appendChild(makeSlot(i + 1));
+    });
+  }
+
+  function makeSlot(index) {
+    const wrap = document.createElement('div');
+    wrap.className = 'slot';
+    const btn = document.createElement('button');
+    btn.className = 'slot-btn';
+    btn.textContent = '+';
+    btn.dataset.index = index;
+    btn.addEventListener('click', () => selectSlot(index, btn));
+    wrap.appendChild(btn);
+    return wrap;
+  }
+
+  function selectSlot(index, btnEl) {
+    if (revealBox.textContent) return;
+    document.querySelectorAll('.slot-btn').forEach(b => b.classList.remove('selected'));
+    btnEl.classList.add('selected');
+    selectedSlot = index;
+    placeConfirmBtn.style.display = 'block';
+  }
+
+  placeConfirmBtn.addEventListener('click', () => {
+    if (selectedSlot === null) return;
+
+    const leftYear = selectedSlot > 0 ? timeline[selectedSlot - 1].year : -Infinity;
+    const rightYear = selectedSlot < timeline.length ? timeline[selectedSlot].year : Infinity;
+    const correct = currentCard.year >= leftYear && currentCard.year <= rightYear;
+
+    played++;
+    if (correct) score++;
+
+    revealBox.textContent = correct
+      ? `✔ Klopt! ${currentCard.title} — ${currentCard.artist} (${currentCard.year})`
+      : `✘ Helaas. ${currentCard.title} — ${currentCard.artist} (${currentCard.year})`;
+    revealBox.className = correct ? 'correct' : 'wrong';
+
+    spotifyFrame.classList.remove('blurred');
+
+    let insertAt = timeline.findIndex(c => c.year > currentCard.year);
+    if (insertAt === -1) insertAt = timeline.length;
+    timeline.splice(insertAt, 0, currentCard);
+
+    updateScore();
+    renderTimeline();
+    placeConfirmBtn.style.display = 'none';
+    nextCardBtn.style.display = 'block';
+  });
+
+  nextCardBtn.addEventListener('click', drawNextCard);
+
+  function endGame() {
+    spotifyFrame.src = '';
+    showScreen(finalScreen);
+    finalScore.textContent = `${score} / ${played} goed`;
+  }
+
+  restartBtn.addEventListener('click', () => {
+    deck = shuffle([...playlist]);
+    timeline = [];
+    score = 0;
+    played = 0;
+    showScreen(gameScreen);
+    drawNextCard();
+  });
+
+  backBtn.addEventListener('click', () => {
+    spotifyFrame.src = '';
+    showScreen(setupScreen);
+  });
+  backBtn2.addEventListener('click', () => {
+    showScreen(setupScreen);
+  });
+
+  // ---------- init ----------
+  renderSongList();
+</script>
+
+</body>
+</html>
