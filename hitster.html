@@ -283,14 +283,17 @@
     <div id="credsBox">
       <h3>Spotify-koppeling</h3>
       <div class="hint">
-        Nodig om te zoeken en playlists te importeren (gratis, eenmalig). Maak een app op
-        <a href="https://developer.spotify.com/dashboard" target="_blank">developer.spotify.com/dashboard</a>,
-        kopieer je Client ID en Client Secret hieronder. Blijft alleen lokaal in je browser opgeslagen.
+        Nodig om te zoeken en je eigen playlists te importeren. Maak een (gratis) app op
+        <a href="https://developer.spotify.com/dashboard" target="_blank">developer.spotify.com/dashboard</a>
+        en vul hieronder je Client ID in. Voeg daarna bij die app, onder Settings → Redirect URIs,
+        precies de onderstaande "Redirect URI" toe (kopiëren en opslaan in het Spotify dashboard).
       </div>
       <input type="text" id="clientIdInput" placeholder="Client ID">
-      <input type="text" id="clientSecretInput" placeholder="Client Secret">
-      <button class="action-btn" id="saveCredsBtn">Opslaan</button>
+      <div class="hint">Redirect URI om toe te voegen in Spotify: <b id="redirectUriDisplay"></b></div>
+      <button class="action-btn" id="saveCredsBtn">Client ID opslaan</button>
       <div id="credsStatus"></div>
+      <button class="action-btn" id="loginBtn" style="margin-top:10px; display:none;">Log in met Spotify</button>
+      <div id="loginStatus" class="hint"></div>
     </div>
 
     <div id="searchBox">
@@ -357,9 +360,11 @@
   // ---------- Opslag ----------
   const STORAGE_KEY = 'hitster_playlist_v1';
   const CREDS_KEY = 'hitster_spotify_creds_v1';
+  const TOKEN_KEY = 'hitster_spotify_token_v1';
+  const REDIRECT_URI = window.location.origin + window.location.pathname;
   let playlist = [];
-  let creds = { clientId: '', clientSecret: '' };
-  let tokenCache = { token: null, expiresAt: 0 };
+  let creds = { clientId: '' };
+  let userToken = { access_token: null, refresh_token: null, expires_at: 0 };
 
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
@@ -371,18 +376,28 @@
     if (savedCreds) creds = JSON.parse(savedCreds);
   } catch (e) {}
 
+  try {
+    const savedToken = localStorage.getItem(TOKEN_KEY);
+    if (savedToken) userToken = JSON.parse(savedToken);
+  } catch (e) {}
+
   function savePlaylist() {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(playlist)); } catch (e) {}
   }
   function saveCreds() {
     try { localStorage.setItem(CREDS_KEY, JSON.stringify(creds)); } catch (e) {}
   }
+  function saveUserToken() {
+    try { localStorage.setItem(TOKEN_KEY, JSON.stringify(userToken)); } catch (e) {}
+  }
 
   // ---------- Elementen ----------
   const clientIdInput = document.getElementById('clientIdInput');
-  const clientSecretInput = document.getElementById('clientSecretInput');
   const saveCredsBtn = document.getElementById('saveCredsBtn');
   const credsStatus = document.getElementById('credsStatus');
+  const redirectUriDisplay = document.getElementById('redirectUriDisplay');
+  const loginBtn = document.getElementById('loginBtn');
+  const loginStatus = document.getElementById('loginStatus');
 
   const searchInput = document.getElementById('searchInput');
   const searchBtn = document.getElementById('searchBtn');
@@ -421,50 +436,188 @@
     el.classList.add('active');
   }
 
-  // ---------- Credentials ----------
+  // ---------- Client ID ----------
   clientIdInput.value = creds.clientId || '';
-  clientSecretInput.value = creds.clientSecret || '';
-  if (creds.clientId && creds.clientSecret) {
+  redirectUriDisplay.textContent = REDIRECT_URI;
+  if (creds.clientId) {
     credsStatus.textContent = 'Opgeslagen.';
     credsStatus.className = 'ok';
+    loginBtn.style.display = 'block';
   }
 
   saveCredsBtn.addEventListener('click', () => {
     creds.clientId = clientIdInput.value.trim();
-    creds.clientSecret = clientSecretInput.value.trim();
     saveCreds();
-    tokenCache = { token: null, expiresAt: 0 };
-    if (creds.clientId && creds.clientSecret) {
+    if (creds.clientId) {
       credsStatus.textContent = 'Opgeslagen.';
       credsStatus.className = 'ok';
+      loginBtn.style.display = 'block';
     } else {
-      credsStatus.textContent = 'Vul beide velden in.';
+      credsStatus.textContent = 'Vul je Client ID in.';
       credsStatus.className = 'bad';
+      loginBtn.style.display = 'none';
     }
   });
 
-  async function getToken() {
-    if (tokenCache.token && Date.now() < tokenCache.expiresAt) {
-      return tokenCache.token;
-    }
-    if (!creds.clientId || !creds.clientSecret) {
-      throw new Error('Geen Spotify Client ID/Secret ingesteld.');
-    }
-    const basic = btoa(`${creds.clientId}:${creds.clientSecret}`);
-    const res = await fetch('https://accounts.spotify.com/api/token', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Basic ${basic}`,
-        'Content-Type': 'application/x-www-form-urlencoded'
-      },
-      body: 'grant_type=client_credentials'
-    });
-    if (!res.ok) throw new Error('Inloggen bij Spotify mislukt — controleer je Client ID/Secret.');
-    const data = await res.json();
-    tokenCache.token = data.access_token;
-    tokenCache.expiresAt = Date.now() + (data.expires_in - 60) * 1000;
-    return tokenCache.token;
+  // ---------- PKCE login ----------
+  function randomString(length) {
+    const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    const values = crypto.getRandomValues(new Uint8Array(length));
+    return Array.from(values).map(v => possible[v % possible.length]).join('');
   }
+
+  async function codeChallengeFromVerifier(verifier) {
+    const data = new TextEncoder().encode(verifier);
+    const hashed = await crypto.subtle.digest('SHA-256', data);
+    const bytes = new Uint8Array(hashed);
+    let str = '';
+    bytes.forEach(b => str += String.fromCharCode(b));
+    return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+
+  const isPopup = !!window.opener;
+
+  loginBtn.addEventListener('click', async () => {
+    if (!creds.clientId) return;
+    const verifier = randomString(64);
+    localStorage.setItem('hitster_pkce_verifier', verifier);
+    const state = randomString(16);
+    localStorage.setItem('hitster_oauth_state', state);
+    const challenge = await codeChallengeFromVerifier(verifier);
+    const params = new URLSearchParams({
+      client_id: creds.clientId,
+      response_type: 'code',
+      redirect_uri: REDIRECT_URI,
+      scope: 'playlist-read-private playlist-read-collaborative',
+      code_challenge_method: 'S256',
+      code_challenge: challenge,
+      state: state
+    });
+    const authUrl = `https://accounts.spotify.com/authorize?${params.toString()}`;
+    const popup = window.open(authUrl, 'spotifyLogin', 'width=480,height=680');
+    if (!popup) {
+      // pop-ups geblokkeerd -> terugvallen op gewone navigatie
+      window.location.href = authUrl;
+      return;
+    }
+    loginStatus.textContent = 'Inlogvenster geopend...';
+  });
+
+  // Ontvang het resultaat van het popup-inlogvenster
+  window.addEventListener('message', (event) => {
+    if (event.origin !== window.location.origin) return;
+    if (!event.data || event.data.source !== 'hitster-spotify-auth') return;
+    if (event.data.error) {
+      loginStatus.textContent = 'Inloggen geweigerd of mislukt.';
+      return;
+    }
+    userToken.access_token = event.data.access_token;
+    userToken.refresh_token = event.data.refresh_token || userToken.refresh_token;
+    userToken.expires_at = Date.now() + (event.data.expires_in - 60) * 1000;
+    saveUserToken();
+    updateLoginUI();
+  });
+
+  function updateLoginUI() {
+    if (userToken.access_token) {
+      loginBtn.textContent = 'Opnieuw inloggen';
+      loginStatus.textContent = '✔ Ingelogd bij Spotify.';
+    } else {
+      loginBtn.textContent = 'Log in met Spotify';
+      loginStatus.textContent = '';
+    }
+  }
+  updateLoginUI();
+
+  async function handleRedirectCallback() {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code');
+    const error = params.get('error');
+
+    if (!code && !error) return;
+
+    if (error) {
+      if (isPopup && window.opener) {
+        window.opener.postMessage({ source: 'hitster-spotify-auth', error: true }, window.location.origin);
+        window.close();
+        return;
+      }
+      loginStatus.textContent = 'Inloggen geweigerd of mislukt.';
+      history.replaceState({}, document.title, REDIRECT_URI);
+      return;
+    }
+
+    const verifier = localStorage.getItem('hitster_pkce_verifier');
+    try {
+      const res = await fetch('https://accounts.spotify.com/api/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          grant_type: 'authorization_code',
+          code: code,
+          redirect_uri: REDIRECT_URI,
+          client_id: creds.clientId,
+          code_verifier: verifier
+        })
+      });
+      if (!res.ok) throw new Error('Inloggen mislukt.');
+      const data = await res.json();
+
+      if (isPopup && window.opener) {
+        window.opener.postMessage({
+          source: 'hitster-spotify-auth',
+          access_token: data.access_token,
+          refresh_token: data.refresh_token,
+          expires_in: data.expires_in
+        }, window.location.origin);
+        window.close();
+        return;
+      }
+
+      // fallback: geen popup, gewoon dezelfde pagina bijwerken
+      userToken.access_token = data.access_token;
+      userToken.refresh_token = data.refresh_token || userToken.refresh_token;
+      userToken.expires_at = Date.now() + (data.expires_in - 60) * 1000;
+      saveUserToken();
+      loginStatus.textContent = '✔ Ingelogd bij Spotify.';
+    } catch (err) {
+      if (isPopup && window.opener) {
+        window.opener.postMessage({ source: 'hitster-spotify-auth', error: true }, window.location.origin);
+        window.close();
+        return;
+      }
+      loginStatus.textContent = err.message;
+    }
+    history.replaceState({}, document.title, REDIRECT_URI);
+    updateLoginUI();
+  }
+
+  async function getToken() {
+    if (userToken.access_token && Date.now() < userToken.expires_at) {
+      return userToken.access_token;
+    }
+    if (userToken.refresh_token) {
+      const res = await fetch('https://accounts.spotify.com/api/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          grant_type: 'refresh_token',
+          refresh_token: userToken.refresh_token,
+          client_id: creds.clientId
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        userToken.access_token = data.access_token;
+        userToken.refresh_token = data.refresh_token || userToken.refresh_token;
+        userToken.expires_at = Date.now() + (data.expires_in - 60) * 1000;
+        saveUserToken();
+        return userToken.access_token;
+      }
+    }
+    throw new Error('Niet ingelogd bij Spotify — druk op "Log in met Spotify".');
+  }
+
 
   // ---------- Zoeken ----------
   searchBtn.addEventListener('click', async () => {
@@ -535,14 +688,21 @@
     importStatus.textContent = 'Bezig met importeren...';
     try {
       const token = await getToken();
-      let nextUrl = `https://api.spotify.com/v1/playlists/${playlistId}/tracks?limit=50`;
+      let nextUrl = `https://api.spotify.com/v1/playlists/${playlistId}/items?limit=50`;
       let added = 0;
       while (nextUrl) {
         const res = await fetch(nextUrl, { headers: { 'Authorization': `Bearer ${token}` } });
-        if (!res.ok) throw new Error('Importeren mislukt — is de playlist openbaar?');
+        if (!res.ok) {
+          let detail = `${res.status} ${res.statusText}`;
+          try {
+            const errJson = await res.json();
+            if (errJson && errJson.error && errJson.error.message) detail = `${res.status}: ${errJson.error.message}`;
+          } catch (e) {}
+          throw new Error(`Importeren mislukt — ${detail}`);
+        }
         const data = await res.json();
         (data.items || []).forEach(item => {
-          const track = item.track;
+          const track = item.item || item.track;
           if (!track || !track.id) return;
           const year = (track.album && track.album.release_date) ? parseInt(track.album.release_date.slice(0, 4), 10) : 0;
           const artistNames = track.artists.map(a => a.name).join(', ');
@@ -747,6 +907,7 @@
 
   // ---------- init ----------
   renderSongList();
+  handleRedirectCallback();
 </script>
 
 </body>
